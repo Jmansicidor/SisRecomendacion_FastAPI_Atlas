@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ./backend
+    image: sisrecomendacion-backend:dev
+    container_name: sisreco-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:     
+      BACKEND_CORS_ORIGINS: "http://localhost:8501"
+      ENVIRONMENT: "local"
+      DOMAIN: "localhost:8000"
+    volumes:
+      - ./backend:/app
+    command: >
+      uvicorn main:app --host 0.0.0.0 --port 8000 --reload --proxy-headers
+
+  frontend:
+    build:
+      context: ./frontend
+    image: sisrecomendacion-frontend:dev
+    container_name: sisreco-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "8501:8501"
+    environment:
+      # Streamlit (en contenedor) debe usar el hostname del servicio backend
+      API_URL: "http://backend:8000"
+    volumes:
+      - ./frontend:/app
+    command: >
+      streamlit run app.py --server.port=8501 --server.address=0.0.0.0
+      --server.enableCORS=false --server.enableXsrfProtection=false
+
+networks:
+  default:
+    name: sisrec-net

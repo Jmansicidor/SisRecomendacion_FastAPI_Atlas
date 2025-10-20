@@ -1,0 +1,37 @@
+# Python / FastAPI
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+.env
+venv/
+env/
+.venv/
+
+# Streamlit
+frontend/.streamlit/
+frontend/__pycache__/
+
+# VSCode / IDE
+.vscode/
+.idea/
+
+# Docker
+*.pid
+*.log
+*.sock
+*.pid.lock
+*.db
+docker_data/
+mongo_data/
+*.bak
+
+# Byte-compiled / temporary files
+*.swp
+*.swo
+*.DS_Store
+Thumbs.db
+
+# System
+.DS_Store

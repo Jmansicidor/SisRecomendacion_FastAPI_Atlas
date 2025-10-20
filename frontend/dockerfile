@@ -1,0 +1,42 @@
+# ===== Base =====
+FROM python:3.13-slim
+
+# Evitar .pyc y forzar logs sin buffer
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+# ===== Dependencias del sistema =====
+# - poppler-utils: requerido por pdf2image
+# - tesseract-ocr: requerido por pytesseract
+# - curl: para healthchecks
+# - fonts-dejavu: evita problemas al renderizar/leer PDFs con fuentes básicas
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    poppler-utils tesseract-ocr curl fonts-dejavu && \
+    rm -rf /var/lib/apt/lists/*
+
+# ===== Directorio de la app =====
+WORKDIR /app
+
+# ===== Instalar dependencias Python =====
+# primero requirements para aprovechar la capa cache
+COPY requirements.txt ./
+RUN python -m pip install --upgrade pip setuptools wheel && \
+    pip install -r requirements.txt
+
+# ===== Copiar el resto del código =====
+COPY . .
+
+# (Opcional) Crear un usuario no-root
+RUN useradd -m appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Puerto FastAPI
+EXPOSE 8000
+
+# Healthcheck simple (requiere tener un endpoint /health en tu API)
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:8000/health || exit 1
+
+# Comando de arranque
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
