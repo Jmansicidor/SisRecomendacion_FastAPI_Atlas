@@ -74,8 +74,7 @@ async def upsert_ranking_for_active_profile(db, cv_id: str, cv_vector: list[floa
     snapshot = {
         "nombre": cv_doc.get("nombre", ""),
         "apellido": cv_doc.get("apellido", ""),
-        "email": cv_doc.get("email", ""),
-        # 👈 útil para descarga directa en front
+        "email": cv_doc.get("email", ""),      
         "cv_file_id": cv_doc.get("cv_file_id", None),
     }
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 import base64
 import json
 import time
+from io import BytesIO
 from typing import Any, Dict, List
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -134,12 +135,13 @@ def reed_cv(archivo_pdf: str, first_page: int = 1, last_page: int = 2, dpi: int 
 
         content_payload = [{"type": "text", "text": USER_INSTRUCTIONS_VISION}]
         for idx, im in enumerate(imgs):
-            fname = f"_cv_{int(time.time())}_{idx+1}.jpg"
-            im.save(fname, "JPEG")
-            with open(fname, "rb") as f:
-                b64 = base64.b64encode(f.read()).decode("utf-8")
-            content_payload.append({"type": "image_url", "image_url": {
-                                   "url": f"data:image/jpeg;base64,{b64}"}})
+            buffer = BytesIO()
+            im.save(buffer, format="JPEG")
+            b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+            content_payload.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{b64}"}
+            })
 
         client = get_openai_client()
         resp = client.chat.completions.create(
@@ -186,10 +188,9 @@ def _build_vision_payload_from_images(imgs) -> List[Dict[str, Any]]:
     """Arma el payload de Vision usando una lista de PIL.Image."""
     content_payload = [{"type": "text", "text": USER_INSTRUCTIONS_VISION}]
     for idx, im in enumerate(imgs):
-        fname = f"_cv_{int(time.time())}_{idx+1}.jpg"
-        im.save(fname, "JPEG")
-        with open(fname, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode("utf-8")
+        buffer = BytesIO()
+        im.save(buffer, format="JPEG")
+        b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
         content_payload.append({
             "type": "image_url",
             "image_url": {"url": f"data:image/jpeg;base64,{b64}"}

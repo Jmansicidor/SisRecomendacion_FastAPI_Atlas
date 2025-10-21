@@ -135,7 +135,7 @@ def download_cv_file(file_id: str, access_token: Optional[str] = None, timeout: 
     headers = {}
     if access_token:
         headers["Authorization"] = f"Bearer {access_token}"
-    r = requests.get(f"{API_BASE}/cv/file/{file_id}",
+    r = requests.get(f"{API_BASE}/api/cv/file/{file_id}",
                      headers=headers, timeout=timeout)
     return r.content if r.ok else None
 

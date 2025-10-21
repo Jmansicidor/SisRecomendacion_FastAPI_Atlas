@@ -36,6 +36,7 @@ pillow==10.4.0
 requests==2.32.3
 aiofiles==24.1.0
 loguru==0.7.2
+rapidfuzz==3.9.7
 
 # --- Email / notificaciones (si usas envío) ---
 aiosmtplib==3.0.2

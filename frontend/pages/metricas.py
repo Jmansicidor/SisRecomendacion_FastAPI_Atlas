@@ -7,8 +7,9 @@ import streamlit as st
 from login.auth_state import init_state
 from login.auth_ui import require_auth, auth_bar
 from utils.menubar import navegacion_path, sidebar_user_box
-from utils.api_metricas import get_ranking, rebuild_ranking   # ← NUEVO: helper rebuild
+from utils.api_metricas import get_ranking, rebuild_ranking
 from utils.notificacion import render_notify_panel
+from utils.api_cv import get_cv_by_email
 
 st.set_page_config(page_title="Métricas de Candidatos", layout="wide")
 
@@ -21,34 +22,52 @@ sidebar_user_box()
 
 API_BASE = st.secrets.get("API_BASE", "http://backend:8000").rstrip("/")
 
+# --- Toggle de debug en barra lateral ---
+DEBUG_DL = st.sidebar.toggle("🔎 Debug descarga CV", value=False)
+
 # ---------- Helpers ----------
 
 
 @st.cache_data(ttl=120, show_spinner=False)
 def _get_cv_count() -> int | None:
+    headers = {}
+    if st.session_state.get("access_token"):
+        headers["Authorization"] = f"Bearer {st.session_state['access_token']}"
     try:
-        headers = {}
-        if st.session_state.get("access_token"):
-            headers["Authorization"] = f"Bearer {st.session_state['access_token']}"
-        r = requests.get(f"{API_BASE}/cv/count", headers=headers, timeout=20)
+        # 1) intento con /api/cv/count
+        r = requests.get(f"{API_BASE}/api/cv/count",
+                         headers=headers, timeout=20)
         if r.ok:
             return (r.json() or {}).get("count", None)
+        # 2) fallback sin /api
+        r2 = requests.get(f"{API_BASE}/cv/count", headers=headers, timeout=20)
+        if r2.ok:
+            return (r2.json() or {}).get("count", None)
     except Exception:
-        return None
+        pass
     return None
 
 
 def _download_cv_bytes_by_file_id(cv_file_id: str) -> bytes | None:
+    """Descarga el PDF vía /api/cv/file/{id}. Si DEBUG_DL está activo, muestra URL y status al fallar."""
     if not cv_file_id:
         return None
     try:
         headers = {}
         if st.session_state.get("access_token"):
             headers["Authorization"] = f"Bearer {st.session_state['access_token']}"
-        r = requests.get(f"{API_BASE}/cv/file/{cv_file_id}",
-                         headers=headers, timeout=60)
-        return r.content if r.ok else None
-    except Exception:
+        url = f"{API_BASE}/api/cv/file/{cv_file_id}"
+        r = requests.get(url, headers=headers, timeout=60)
+        if r.ok:
+            return r.content
+        else:
+            if DEBUG_DL:
+                st.error(
+                    f"CV no disponible (HTTP {r.status_code}) — URL={url}")
+            return None
+    except Exception as e:
+        if DEBUG_DL:
+            st.error(f"Error al descargar: {type(e).__name__}: {e}")
         return None
 
 
@@ -67,14 +86,12 @@ def _fetch_ranking(perfil_id: str | None, limit: int):
             if k not in row and k in snap:
                 row[k] = snap.get(k)
 
-        # 2) compat con respuesta vieja (por si el backend todavía la usa)
-        #    compatibilidad -> score, similitud -> score_cos, jaccards varios -> score_j_total (promedio)
+        # 2) compat con respuesta vieja
         if "score" not in row and "compatibilidad" in row:
             row["score"] = row.get("compatibilidad", 0)
         if "score_cos" not in row and "similitud" in row:
             row["score_cos"] = row.get("similitud", 0)
         if "score_j_total" not in row:
-            # intenta armar un jaccard total si vienen las parciales del formato viejo
             j_parts = []
             for jk in ("sim_atributos", "sim_experiencia", "sim_educacion", "sim_idiomas", "sim_idioma"):
                 if jk in row and row[jk] is not None:
@@ -82,9 +99,8 @@ def _fetch_ranking(perfil_id: str | None, limit: int):
             row["score_j_total"] = (
                 sum(j_parts) / len(j_parts)) if j_parts else row.get("score_j_total", 0)
 
-        # 3) coerción a float (si vienen como string / Decimal128)
-        for k in ("score", "score_cos", "score_j_total",
-                  "score_j_hab", "score_j_exp", "score_j_edu", "score_j_idi"):
+        # 3) coerción a float
+        for k in ("score", "score_cos", "score_j_total", "score_j_hab", "score_j_exp", "score_j_edu", "score_j_idi"):
             try:
                 row[k] = float(row.get(k, 0) or 0)
             except Exception:
@@ -93,13 +109,11 @@ def _fetch_ranking(perfil_id: str | None, limit: int):
         flat.append(row)
 
     data["items"] = flat
-
-    # DEBUG opcional: ver exactamente qué llega
     # st.write("DEBUG first item:"); st.json(flat[:1])
-
     return data
 
 
+# ---------- Encabezado ----------
 ci1, ci2 = st.columns([4, 1])
 with ci1:
     st.header("🏆 Métricas / Ranking de Candidatos")
@@ -152,16 +166,11 @@ if not items:
 perfil_id = (data or {}).get("perfil_id")
 count = (data or {}).get("count", len(items))
 
-if not items:
-    st.info("Aún no hay candidatos con métricas calculadas o no hay un perfil activo.")
-    st.stop()
-
 st.caption(f"Perfil: {perfil_id or 'activo'} • Ítems: {count}")
 
 # ---------- DataFrame ----------
 df = pd.DataFrame(items)
 
-# columnas mostradas (las que vengan)
 prefer_order = [c for c in ["nombre", "apellido", "email", "score",
                             "score_cos", "score_j_total", "cv_id", "cv_file_id"] if c in df.columns]
 if prefer_order:
@@ -174,7 +183,6 @@ with st.expander("🔧 Filtros", expanded=True):
         min_score = st.slider("Score mínimo", 0.0, 1.0, 0.50, step=0.05)
     with c2:
         max_score = st.slider("Score máximo", 0.0, 1.0, 1.00, step=0.05)
-
     name_query = st.text_input(
         "🔍 Buscar por nombre o email", placeholder="Escribí parte del nombre o email…")
 
@@ -188,11 +196,11 @@ if name_query:
         df_view = df_view[df_view["nombre"].fillna(
             "").str.contains(name_query, case=False)]
     if "apellido" in df_view.columns:
-        df_view = df_view[df_view["apellido"].fillna("").str.contains(name_query, case=False) | (
-            df_view["nombre"].fillna("").str.contains(name_query, case=False))]
+        df_view = df_view[df_view["apellido"].fillna("").str.contains(name_query, case=False) |
+                          (df_view["nombre"].fillna("").str.contains(name_query, case=False))]
     if "email" in df_view.columns:
-        df_view = df_view[df_view["email"].fillna("").str.contains(name_query, case=False) | (
-            df_view["nombre"].fillna("").str.contains(name_query, case=False))]
+        df_view = df_view[df_view["email"].fillna("").str.contains(name_query, case=False) |
+                          (df_view["nombre"].fillna("").str.contains(name_query, case=False))]
 
 # ---------- Tabla ----------
 st.subheader("Candidatos (filtrados)")
@@ -207,18 +215,27 @@ if "score_j_total" in df_view.columns:
     col_cfg["score_j_total"] = st.column_config.ProgressColumn(
         "Jaccard", help="Coincidencias discretas (skills/exp/edu/idiomas)", format="%.3f", min_value=0.0, max_value=1.0)
 
-st.dataframe(
-    df_view,
-    hide_index=True,
-    use_container_width=True,
-    column_config=col_cfg,
-)
+st.dataframe(df_view, hide_index=True,
+             use_container_width=True, column_config=col_cfg)
 
-# ---------- Descarga de CV (opcional) ----------
+# ---------- Descarga de CV ----------
 st.markdown("### 📄 Descarga de CVs")
-if "cv_file_id" not in df.columns:
-    st.info("Para habilitar descargas directas, guarda `cv_file_id` en el snapshot del ranking desde el backend.")
-else:
+
+
+def _get_cv_file_id_by_email(email: str) -> str | None:
+    """Fallback por email (por si alguna fila no trae cv_file_id)."""
+    if not email:
+        return None
+    try:
+        cv_doc, _ = get_cv_by_email(email, full=True)
+        if isinstance(cv_doc, dict):
+            return cv_doc.get("cv_file_id") or (cv_doc.get("cv") or {}).get("cv_file_id")
+    except Exception:
+        pass
+    return None
+
+
+if "cv_file_id" in df.columns:
     dl_query = st.text_input(
         "🔍 Buscar candidato para descargar su CV", placeholder="Escribí parte del nombre…")
     if dl_query:
@@ -227,10 +244,16 @@ else:
         if df_filtrado.empty:
             st.warning(f"No se encontraron candidatos para \"{dl_query}\".")
         else:
+            # Solo filas con cv_file_id presente
+            df_filtrado = df_filtrado[df_filtrado["cv_file_id"].notna() & (
+                df_filtrado["cv_file_id"].astype(str).str.len() > 0)]
+            if df_filtrado.empty:
+                st.warning(
+                    "Los candidatos encontrados no tienen cv_file_id en el ranking (posible ranking viejo).")
             for _, row in df_filtrado.iterrows():
                 nombre = f"{row.get('nombre', '')} {row.get('apellido', '')}".strip(
                 ) or row.get("email", "candidato")
-                cv_file_id = row.get("cv_file_id")
+                cv_file_id = str(row.get("cv_file_id") or "").strip()
                 if not cv_file_id:
                     st.error("CV no disponible (cv_file_id ausente).")
                     continue
@@ -241,17 +264,53 @@ else:
                         data=pdf_bytes,
                         file_name=f"{nombre.replace(' ', '_')}.pdf",
                         mime="application/pdf",
-                        key=f"dl-{cv_file_id}"
+                        key=f"dl-{cv_file_id}",
                     )
                 else:
+                    # Mensaje detallado ya mostrado si DEBUG_DL está activo
                     st.error("CV no disponible")
+else:
+    st.info("El ranking no incluye `cv_file_id`. Usaremos un fallback por email para descargar el CV.")
+    dl_query = st.text_input("🔍 Buscar candidato por nombre o email",
+                             placeholder="Escribí parte del nombre o email…")
+    if dl_query:
+        mask = None
+        for col in ("nombre", "apellido", "email"):
+            if col in df_view.columns:
+                cm = df_view[col].fillna("").str.contains(dl_query, case=False)
+                mask = cm if mask is None else (mask | cm)
+        df_filtrado = df_view[mask] if mask is not None else df_view.iloc[0:0]
+        if df_filtrado.empty:
+            st.warning(f"No se encontraron candidatos para \"{dl_query}\".")
+        else:
+            for _, row in df_filtrado.iterrows():
+                email = (row.get("email") or "").strip()
+                if not email:
+                    st.warning("Fila sin email; no puedo usar fallback.")
+                    continue
+                cv_file_id = _get_cv_file_id_by_email(email)
+                if not cv_file_id:
+                    st.error(f"No encontré CV para {email}.")
+                    continue
+                pdf_bytes = _download_cv_bytes_by_file_id(cv_file_id)
+                if pdf_bytes:
+                    nombre = f"{row.get('nombre', '')} {row.get('apellido', '')}".strip(
+                    ) or email
+                    st.download_button(
+                        label=f"📄 Descargar CV de {email}",
+                        data=pdf_bytes,
+                        file_name=f"{nombre.replace(' ', '_')}.pdf",
+                        mime="application/pdf",
+                        key=f"dl-fallback-{cv_file_id}",
+                    )
+                else:
+                    st.error("CV no disponible (fallback por email)")
 
 st.divider()
 
-
-# reusar df_view/df para la selección de destinatarios
+# Notificaciones
 render_notify_panel(
-    df_ranking=df,    # usa el df filtrado
+    df_ranking=df,
     api_base=API_BASE,
     default_subject="Estado de tu postulación",
     default_body=(

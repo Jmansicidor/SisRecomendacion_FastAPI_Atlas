@@ -34,6 +34,7 @@ services:
     environment:
       # Streamlit (en contenedor) debe usar el hostname del servicio backend
       API_URL: "http://backend:8000"
+      
     volumes:
       - ./frontend:/app
     command: >
