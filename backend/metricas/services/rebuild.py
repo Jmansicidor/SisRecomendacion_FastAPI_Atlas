@@ -14,7 +14,11 @@ from utils.text_normalizer import tokens_norm, soft_jaccard
 
 
 async def rebuild_ranking_for_profile(db, perfil_id: str) -> int:
-    # Traer perfil (vector + listas simbólicas)
+
+    # 0) Limpia ranking existente de ese perfil (evita mezclas con perfiles previos)
+    await db["ranking"].delete_many({"perfil_id": perfil_id})
+
+    # 1) Traer perfil (vector + listas simbólicas)
     perf = await db["perfiles"].find_one(
         {"_id": ObjectId(perfil_id)},
         projection={"vector": 1, "atributos": 1,
@@ -23,66 +27,63 @@ async def rebuild_ranking_for_profile(db, perfil_id: str) -> int:
     if not perf or not perf.get("vector"):
         return 0
 
-    # Vector del perfil
     p = np.asarray(perf["vector"], dtype=np.float32)
+    if p.size == 0:
+        return 0
     p_norm = float(np.linalg.norm(p)) or 1e-8
 
-    # Normalización simbólica del perfil (sets)
+    # Perfil normalizado para jaccard blando
     perf_atr = tokens_norm(perf.get("atributos", []))
     perf_exp = tokens_norm(perf.get("experiencia", []))
     perf_edu = tokens_norm(perf.get("educacion", []))
     perf_idi = tokens_norm(perf.get("idiomas", []))
 
-    # Traer todos los CV con vector
-    cur = db["curriculum"].find(
-        {"cv_vector": {"$type": "array"}},
-        projection={
-            "_id": 1, "cv_vector": 1, "norm": 1,
-            "nombre": 1, "apellido": 1, "email": 1,
-            "tokens_habilidades": 1, "tokens_experiencia": 1, "tokens_formacion": 1,
-            "tokens_idiomas": 1,      # 👈 incluir idiomas si los guardás
-            "cv_file_id": 1           # 👈 útil para snapshot/descarga en front
-        }
-    )
-    docs = await cur.to_list(length=None)
+    # 2) Recorrer todos los CVs
+    projection = {
+        "_id": 1, "nombre": 1, "apellido": 1, "email": 1, "cv_file_id": 1,
+        "cv_vector": 1, "norm": 1,
+        "tokens_habilidades": 1, "tokens_experiencia": 1, "tokens_formacion": 1, "tokens_idiomas": 1,
+    }
+    cur = db["curriculum"].find({}, projection=projection)
 
-    count = 0
-    for d in docs:
-        # Coseno (con protección por norma)
-        x = np.asarray(d.get("cv_vector") or [], dtype=np.float32)
+    updated = 0
+    async for cv in cur:
+        # --- Coseno ---
+        x = np.asarray(cv.get("cv_vector") or [], dtype=np.float32)
         if x.size == 0:
-            continue
-        x_norm = float(d.get("norm") or (np.linalg.norm(x))) or 1e-8
-        cos = float((x @ p) / (x_norm * p_norm + 1e-8))
+            cos = 0.0
+        else:
+            x_norm = float(cv.get("norm") or np.linalg.norm(x)) or 1e-8
+            cos = float((x @ p) / (x_norm * p_norm + 1e-8))
 
-        # Normalización simbólica del CV
-        cv_hab = tokens_norm(d.get("tokens_habilidades", []))
-        cv_exp = tokens_norm(d.get("tokens_experiencia", []))
-        cv_edu = tokens_norm(d.get("tokens_formacion", []))
-        # puede ser set() si no existe
-        cv_idi = tokens_norm(d.get("tokens_idiomas", []))
+        # --- Jaccards blandos ---
+        cv_hab = tokens_norm(cv.get("tokens_habilidades", []))
+        cv_exp = tokens_norm(cv.get("tokens_experiencia", []))
+        cv_edu = tokens_norm(cv.get("tokens_formacion", []))
+        cv_idi = tokens_norm(cv.get("tokens_idiomas", []))
 
-        # Jaccards “blandos”, alineados con el live
         thr = THR_JACCARD
         J_hab = soft_jaccard(perf_atr, cv_hab, thr=thr)
         J_exp = soft_jaccard(perf_exp, cv_exp, thr=thr)
         J_edu = soft_jaccard(perf_edu, cv_edu, thr=thr)
         J_idi = soft_jaccard(perf_idi, cv_idi, thr=thr)
 
-        j_total = W_HAB*J_hab + W_EXP*J_exp + W_EDU*J_edu + W_IDI*J_idi
-        score = ALPHA*cos + (1.0 - ALPHA)*j_total
+        j_total = W_HAB * J_hab + W_EXP * J_exp + W_EDU * J_edu + W_IDI * J_idi
+        score = ALPHA * cos + (1.0 - ALPHA) * j_total
 
+        # --- Snapshot para el front (incluye cv_file_id para descarga) ---
         snapshot = {
-            "nombre": d.get("nombre", ""),
-            "apellido": d.get("apellido", ""),
-            "email": d.get("email", ""),
-            # 👈 opcional pero práctico
-            "cv_file_id": d.get("cv_file_id", None),
+            "nombre": cv.get("nombre", ""),
+            "apellido": cv.get("apellido", ""),
+            "email": cv.get("email", ""),
+            "cv_file_id": cv.get("cv_file_id", None),
         }
 
         await db["ranking"].update_one(
-            {"perfil_id": str(perfil_id), "cv_id": str(d["_id"])},
+            {"perfil_id": perfil_id, "cv_id": str(cv["_id"])},
             {"$set": {
+                "perfil_id": perfil_id,
+                "cv_id": str(cv["_id"]),
                 "score": float(score),
                 "score_cos": float(cos),
                 "score_j_total": float(j_total),
@@ -96,10 +97,10 @@ async def rebuild_ranking_for_profile(db, perfil_id: str) -> int:
                     "thr": int(thr),
                 },
                 "updated_at": time.time(),
-                "snapshot": snapshot
+                "snapshot": snapshot,
             }},
             upsert=True
         )
-        count += 1
+        updated += 1
 
-    return count
+    return updated
