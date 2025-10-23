@@ -5,11 +5,12 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from metricas.services.rebuild import rebuild_ranking_for_profile
 from fastapi import HTTPException
 from bson import ObjectId
+from auth.utils.permissions import require_admin
 
 metricas_router = APIRouter(prefix="/metricas", tags=["metricas"])
 
 
-@metricas_router.get("/ranking")
+@metricas_router.get("/ranking", dependencies=[Depends(require_admin())])
 async def get_ranking(
     limit: int = Query(100, ge=1, le=1000),
     skip: int = Query(0, ge=0),

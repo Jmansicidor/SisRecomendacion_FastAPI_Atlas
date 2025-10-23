@@ -35,3 +35,9 @@ Thumbs.db
 
 # System
 .DS_Store
+
+# Media files
+*_cv_*.jpg
+*.jpg
+*.png
+*.pdf

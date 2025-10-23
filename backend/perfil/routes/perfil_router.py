@@ -4,11 +4,12 @@ from perfil.schemas.perfil_schemas import PerfilCreate, PerfilOut
 from perfil.services.perfil_service import guardar_perfil, obtener_perfil_activo
 from core.database import get_db
 from bson import ObjectId
+from auth.utils.permissions import require_admin
 
 perfil_router = APIRouter(prefix="/perfil", tags=["perfil"])
 
 
-@perfil_router.post("/", response_model=dict)
+@perfil_router.post("/", response_model=dict, dependencies=[Depends(require_admin())])
 async def crear_perfil(payload: PerfilCreate, db=Depends(get_db)):
     _id = await guardar_perfil(db, payload.model_dump())
     return {"id": _id}

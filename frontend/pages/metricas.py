@@ -4,6 +4,7 @@ import pandas as pd
 import requests
 import streamlit as st
 
+from backend.auth.utils.permissions import require_roles
 from login.auth_state import init_state
 from login.auth_ui import require_auth, auth_bar
 from utils.menubar import navegacion_path, sidebar_user_box
@@ -19,6 +20,8 @@ me = require_auth()
 auth_bar()
 navegacion_path()
 sidebar_user_box()
+require_roles({"admin"})
+
 
 API_BASE = st.secrets.get("API_BASE", "http://backend:8000").rstrip("/")
 
@@ -219,58 +222,27 @@ st.dataframe(df_view, hide_index=True,
              use_container_width=True, column_config=col_cfg)
 
 # ---------- Descarga de CV ----------
+
+
 st.markdown("### 📄 Descarga de CVs")
-
-
-def _get_cv_file_id_by_email(email: str) -> str | None:
-    """Fallback por email (por si alguna fila no trae cv_file_id)."""
-    if not email:
-        return None
-    try:
-        cv_doc, _ = get_cv_by_email(email, full=True)
-        if isinstance(cv_doc, dict):
-            return cv_doc.get("cv_file_id") or (cv_doc.get("cv") or {}).get("cv_file_id")
-    except Exception:
-        pass
-    return None
-
-
-if "cv_file_id" in df.columns:
+if "cv_file_id" not in df.columns:
+    st.info("Para habilitar descargas directas, guarda `cv_file_id` en el snapshot del ranking desde el backend.")
+else:
     dl_query = st.text_input(
-        "🔍 Buscar candidato para descargar su CV",
-        placeholder="Escribí parte del nombre o email…"
-    )
+        "🔍 Buscar candidato por email para descargar su CV", placeholder="Escribí parte del nombre…")
     if dl_query:
-        base = df_view.copy()
-
-        # ---- 🔍 Filtro OR por nombre, apellido o email (sin regex) ----
-        mask = None
-        for col in ("nombre", "apellido", "email"):
-            if col in base.columns:
-                m = base[col].fillna("").str.contains(
-                    dl_query, case=False, regex=False)
-                mask = m if mask is None else (mask | m)
-        base = base[mask] if mask is not None else base.iloc[0:0]
-
-        # Solo filas con cv_file_id presente y válido
-        base = base[base["cv_file_id"].notna() & (
-            base["cv_file_id"].astype(str).str.len() > 0)]
-
-        # Deduplicar por file_id (para evitar errores de key duplicada)
-        base = base.drop_duplicates(
-            subset=["cv_file_id"]).reset_index(drop=True)
-
-        if base.empty:
+        df_filtrado = df_view[df_view["email"].fillna(
+            "").str.contains(dl_query, case=False)]
+        if df_filtrado.empty:
             st.warning(f"No se encontraron candidatos para \"{dl_query}\".")
         else:
-            for i, row in base.iterrows():
-                nombre = (f"{row.get('nombre', '')} {row.get('apellido', '')}".strip()
-                          or row.get('email', 'candidato'))
-                cv_file_id = str(row.get("cv_file_id") or "").strip()
+            for _, row in df_filtrado.iterrows():
+                nombre = f"{row.get('nombre', '')} {row.get('apellido', '')}".strip(
+                ) or row.get("email", "candidato")
+                cv_file_id = row.get("cv_file_id")
                 if not cv_file_id:
                     st.error("CV no disponible (cv_file_id ausente).")
                     continue
-
                 pdf_bytes = _download_cv_bytes_by_file_id(cv_file_id)
                 if pdf_bytes:
                     st.download_button(
@@ -278,47 +250,10 @@ if "cv_file_id" in df.columns:
                         data=pdf_bytes,
                         file_name=f"{nombre.replace(' ', '_')}.pdf",
                         mime="application/pdf",
-                        key=f"dl-{cv_file_id}-{i}",  # clave única
+                        key=f"dl-{cv_file_id}"
                     )
                 else:
                     st.error("CV no disponible")
-
-else:
-    st.info("El ranking no incluye `cv_file_id`. Usaremos un fallback por email para descargar el CV.")
-    dl_query = st.text_input("🔍 Buscar candidato por nombre o email",
-                             placeholder="Escribí parte del nombre o email…")
-    if dl_query:
-        mask = None
-        for col in ("nombre", "apellido", "email"):
-            if col in df_view.columns:
-                cm = df_view[col].fillna("").str.contains(dl_query, case=False)
-                mask = cm if mask is None else (mask | cm)
-        df_filtrado = df_view[mask] if mask is not None else df_view.iloc[0:0]
-        if df_filtrado.empty:
-            st.warning(f"No se encontraron candidatos para \"{dl_query}\".")
-        else:
-            for _, row in df_filtrado.iterrows():
-                email = (row.get("email") or "").strip()
-                if not email:
-                    st.warning("Fila sin email; no puedo usar fallback.")
-                    continue
-                cv_file_id = _get_cv_file_id_by_email(email)
-                if not cv_file_id:
-                    st.error(f"No encontré CV para {email}.")
-                    continue
-                pdf_bytes = _download_cv_bytes_by_file_id(cv_file_id)
-                if pdf_bytes:
-                    nombre = f"{row.get('nombre', '')} {row.get('apellido', '')}".strip(
-                    ) or email
-                    st.download_button(
-                        label=f"📄 Descargar CV de {email}",
-                        data=pdf_bytes,
-                        file_name=f"{nombre.replace(' ', '_')}.pdf",
-                        mime="application/pdf",
-                        key=f"dl-fallback-{cv_file_id}",
-                    )
-                else:
-                    st.error("CV no disponible (fallback por email)")
 
 st.divider()
 

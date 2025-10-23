@@ -1,7 +1,7 @@
 # pages/perfiles.py
 import streamlit as st
 from login.auth_state import init_state
-from login.auth_ui import require_auth, auth_bar
+from login.auth_ui import require_auth, auth_bar, require_roles
 from utils.menubar import navegacion_path, sidebar_user_box
 from utils.api_perfil import guardar_perfil_api, obtener_perfil_activo_publico_api
 
@@ -13,6 +13,7 @@ me = require_auth()
 auth_bar()
 navegacion_path()
 sidebar_user_box()
+require_roles({"admin"})
 
 st.title("Perfiles")
 st.write(me)

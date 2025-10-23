@@ -1,5 +1,6 @@
 
 # auth_ui.py
+from collections.abc import Iterable
 import streamlit as st
 import login.auth_client as api
 
@@ -87,3 +88,14 @@ def auth_bar() -> None:
     with col1:
         me = st.session_state.get("me") or {}
         st.caption(f"Conectado como: {me.get('email', '(desconocido)')}")
+
+
+def require_roles(allowed: Iterable[str]):
+    """Detiene la página si el usuario no tiene al menos 1 rol permitido."""
+    me = st.session_state.get("user") or {}
+    roles = set(me.get("roles") or [])
+    if not roles.intersection(set(allowed)):
+        st.error("⛔ No estás autorizado para ver esta página.")
+        # (opcional) redirigir a inicio:
+        # st.switch_page("app.py")
+        st.stop()

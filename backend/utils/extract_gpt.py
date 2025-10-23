@@ -1,8 +1,8 @@
 from __future__ import annotations
 import base64
+from io import BytesIO
 import json
 import time
-from io import BytesIO
 from typing import Any, Dict, List
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -123,33 +123,39 @@ USER_INSTRUCTIONS_VISION = (
 #  API pública
 # ===============================
 
+
+def _pil_image_to_b64_jpeg(im) -> str:
+    buf = BytesIO()
+    im.save(buf, format="JPEG")  # nada a disco
+    b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+    return f"data:image/jpeg;base64,{b64}"
+
+
+def _build_vision_payload_from_images(imgs) -> List[Dict[str, Any]]:
+    content_payload = [{"type": "text", "text": USER_INSTRUCTIONS_VISION}]
+    for im in imgs:
+        data_url = _pil_image_to_b64_jpeg(im)
+        content_payload.append({
+            "type": "image_url",
+            "image_url": {"url": data_url}
+        })
+    return content_payload
+
+
 def reed_cv(archivo_pdf: str, first_page: int = 1, last_page: int = 2, dpi: int = 300) -> Dict[str, str]:
-    """Convierte las primeras páginas del PDF a imágenes y usa GPT-4o Visión
-    para extraer un JSON (sanitizado) con los campos clave.
-    """
+
     try:
         imgs = convert_from_path(archivo_pdf, dpi=dpi,
                                  first_page=first_page, last_page=last_page)
         if not imgs:
             raise RuntimeError("No se pudieron generar imágenes del PDF.")
 
-        content_payload = [{"type": "text", "text": USER_INSTRUCTIONS_VISION}]
-        for idx, im in enumerate(imgs):
-            buffer = BytesIO()
-            im.save(buffer, format="JPEG")
-            b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
-            content_payload.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{b64}"}
-            })
-
+        content_payload = _build_vision_payload_from_images(imgs)
         client = get_openai_client()
         resp = client.chat.completions.create(
             model="gpt-4o",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": content_payload},
-            ],
+            messages=[{"role": "system", "content": SYSTEM_PROMPT},
+                      {"role": "user", "content": content_payload}],
             temperature=0,
         )
         content = resp.choices[0].message.content
@@ -188,9 +194,10 @@ def _build_vision_payload_from_images(imgs) -> List[Dict[str, Any]]:
     """Arma el payload de Vision usando una lista de PIL.Image."""
     content_payload = [{"type": "text", "text": USER_INSTRUCTIONS_VISION}]
     for idx, im in enumerate(imgs):
-        buffer = BytesIO()
-        im.save(buffer, format="JPEG")
-        b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        fname = f"_cv_{int(time.time())}_{idx+1}.jpg"
+        im.save(fname, "JPEG")
+        with open(fname, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("utf-8")
         content_payload.append({
             "type": "image_url",
             "image_url": {"url": f"data:image/jpeg;base64,{b64}"}
