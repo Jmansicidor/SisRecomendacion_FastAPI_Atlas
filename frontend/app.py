@@ -169,23 +169,3 @@ if fetch_err:
 if not cv_doc:
     st.warning("Aún no cargaste tu CV.")
     st.stop()
-
-
-cv_id = cv_doc.get("cv_file_id")
-
-if cv_id:
-    if st.button("📥 Preparar descarga de mi PDF"):
-        with st.spinner("Recuperando PDF…"):
-            pdf_bytes = _download_pdf(cv_id)
-        if pdf_bytes:
-            st.download_button(
-                label="Descargar mi CV (PDF)",
-                data=pdf_bytes,
-                file_name=f"{(nombre or 'mi_cv').replace(' ', '_')}.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-            )
-        else:
-            st.info("No se pudo recuperar el PDF desde GridFS.")
-else:
-    st.caption("No se encontró un archivo PDF asociado a este CV.")

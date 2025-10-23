@@ -10,7 +10,7 @@ from auth.utils.permissions import require_admin
 metricas_router = APIRouter(prefix="/metricas", tags=["metricas"])
 
 
-@metricas_router.get("/ranking", dependencies=[Depends(require_admin())])
+@metricas_router.get("/ranking")
 async def get_ranking(
     limit: int = Query(100, ge=1, le=1000),
     skip: int = Query(0, ge=0),

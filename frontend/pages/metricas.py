@@ -3,14 +3,12 @@ import math
 import pandas as pd
 import requests
 import streamlit as st
-
-from backend.auth.utils.permissions import require_roles
 from login.auth_state import init_state
-from login.auth_ui import require_auth, auth_bar
+from login.auth_ui import require_auth, auth_bar, require_roles
 from utils.menubar import navegacion_path, sidebar_user_box
 from utils.api_metricas import get_ranking, rebuild_ranking
 from utils.notificacion import render_notify_panel
-from utils.api_cv import get_cv_by_email
+
 
 st.set_page_config(page_title="Métricas de Candidatos", layout="wide")
 
@@ -146,7 +144,8 @@ with actions_col:
             with st.status("Recalculando métricas…", expanded=True) as stt:
                 try:
                     info = rebuild_ranking(
-                        perfil_id=perfil_id_opt or None, timeout=600)
+                        perfil_id=perfil_id_opt or None,
+                        access_token=st.session_state.get("access_token"))
                     stt.update(
                         label=f"✅ OK: {info.get('updated', 0)} CVs recalculados", state="complete")
                     st.toast("Rebuild completo", icon="✅")
@@ -156,11 +155,16 @@ with actions_col:
 
 # ---------- Traer ranking ----------
 with st.spinner("Obteniendo ranking…"):
-    try:
-        data = _fetch_ranking(perfil_id_opt or None, topN)
-    except Exception as e:
-        st.error(f"No se pudo obtener el ranking: {e}")
-        st.stop()
+    with st.spinner("Obteniendo ranking…"):
+        try:
+            data = get_ranking(
+                perfil_id=perfil_id_opt or None,
+                limit=topN,
+                access_token=st.session_state.get("access_token")  # ← CLAVE
+            )
+        except Exception as e:
+            st.error(f"No se pudo obtener el ranking: {e}")
+            st.stop()
 
 items = (data or {}).get("items", [])
 if not items:

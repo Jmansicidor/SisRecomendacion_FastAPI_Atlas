@@ -91,8 +91,8 @@ def auth_bar() -> None:
 
 
 def require_roles(allowed: Iterable[str]):
-    """Detiene la página si el usuario no tiene al menos 1 rol permitido."""
-    me = st.session_state.get("user") or {}
+
+    me = st.session_state.get("me") or {}
     roles = set(me.get("roles") or [])
     if not roles.intersection(set(allowed)):
         st.error("⛔ No estás autorizado para ver esta página.")

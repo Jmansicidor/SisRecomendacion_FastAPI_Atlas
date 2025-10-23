@@ -9,7 +9,7 @@ from auth.utils.permissions import require_admin
 perfil_router = APIRouter(prefix="/perfil", tags=["perfil"])
 
 
-@perfil_router.post("/", response_model=dict, dependencies=[Depends(require_admin())])
+@perfil_router.post("/", response_model=dict)
 async def crear_perfil(payload: PerfilCreate, db=Depends(get_db)):
     _id = await guardar_perfil(db, payload.model_dump())
     return {"id": _id}
@@ -22,5 +22,3 @@ async def get_perfil_activo(db=Depends(get_db)):
         return {}
     doc["id"] = str(doc.pop("_id"))
     return PerfilOut(**doc)
-
-    

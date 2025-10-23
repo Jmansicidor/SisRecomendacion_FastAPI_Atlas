@@ -8,6 +8,13 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8000").rstrip("/")
 API_PERFIL_BASE = f"{BACKEND_URL}/api/perfil"
 
 
+def _auth_header(access_token: Optional[str]) -> Dict[str, str]:
+    h = {"Accept": "application/json", "Content-Type": "application/json"}
+    if access_token:
+        h["Authorization"] = f"Bearer {access_token}"
+    return h
+
+
 def guardar_perfil_api(
     *,
     usuario: Optional[str],
@@ -22,7 +29,7 @@ def guardar_perfil_api(
     access_token: Optional[str] = None,
     timeout: int = 30
 ) -> Tuple[Optional[str], Optional[str]]:
-    """POST /api/perfil/  → {id: "..."}"""
+    """POST /api/perfil/  → {id: "..."} (solo admin)"""
     url = f"{API_PERFIL_BASE}/"
     payload = {
         "usuario": usuario,
@@ -35,19 +42,13 @@ def guardar_perfil_api(
         "activo": activo,
         "publicado": publicado,
     }
-    headers = {"Accept": "application/json",
-               "Content-Type": "application/json"}
-    if access_token:
-        headers["Authorization"] = f"Bearer {access_token}"
-
     try:
-        r = requests.post(url, json=payload, headers=headers, timeout=timeout)
-        if r.status_code == 200:
-            return (r.json() or {}).get("id"), None
-        # 201 también es válido en algunos routers
-        if r.status_code == 201:
+        r = requests.post(url, json=payload, headers=_auth_header(
+            access_token), timeout=timeout)
+        if r.status_code in (200, 201):
             body = r.json() or {}
             return body.get("id") or body.get("_id") or body.get("inserted_id"), None
+        # errores legibles
         try:
             return None, f"{r.status_code}: {r.json()}"
         except Exception:
@@ -60,29 +61,22 @@ def obtener_perfil_activo_publico_api(
     access_token: Optional[str] = None,
     timeout: int = 20
 ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-    """
-    Intenta varios endpoints comunes:
-      GET /api/perfil/activo
-      GET /api/perfil/actual
-      GET /api/perfil/ (si devuelve el activo)
-    Ajustá si tu backend usa otro path.
-    """
-    headers = {"Accept": "application/json"}
-    if access_token:
-        headers["Authorization"] = f"Bearer {access_token}"
 
-    for path in ("/activo", "/actual", "/"):
-        url = f"{API_PERFIL_BASE}{path}"
+    headers = _auth_header(access_token)
+    candidates = [
+        f"{API_PERFIL_BASE}/activo",
+        f"{API_PERFIL_BASE}/actual",
+        f"{API_PERFIL_BASE}/",        # si devuelve el activo
+    ]
+    for url in candidates:
         try:
             r = requests.get(url, headers=headers, timeout=timeout)
             if r.ok:
                 data = r.json()
-                # si viene como {"perfil": {...}} o directo {...}
                 if isinstance(data, dict) and "perfil" in data and isinstance(data["perfil"], dict):
                     return data["perfil"], None
                 if isinstance(data, dict):
                     return data, None
-            # probar siguiente path si 404
         except Exception:
             pass
     return None, "No se pudo obtener el perfil activo desde la API."

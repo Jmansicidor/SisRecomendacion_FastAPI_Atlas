@@ -43,7 +43,6 @@ def require_roles(*allowed: Any):
 
 # Atajos convenientes
 def require_admin():
-    """Guard que exige rol 'admin'."""
     return require_roles("admin")
 
 

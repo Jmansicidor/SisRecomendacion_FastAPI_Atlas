@@ -9,11 +9,11 @@ st.set_page_config(page_title="Perfil", layout="wide")
 
 # --- Auth / UI ---
 init_state()
-me = require_auth()
+me = require_auth()                 # asegura sesión
+require_roles({"admin"})            # asegura rol admin (frontend)
 auth_bar()
 navegacion_path()
 sidebar_user_box()
-require_roles({"admin"})
 
 st.title("Perfiles")
 st.write(me)
@@ -28,11 +28,10 @@ educacion_input = st.text_input(
     "Educaciones (separadas por comas)", placeholder="Ej: Ingeniero, Magíster")
 atributos_input = st.text_input(
     "Habilidades (separadas por comas)", placeholder="Ej: Python, Liderazgo")
-experiencia_input = st.text_area(
-    "Experiencias laborales (separadas por comas)", placeholder="Ej: Gestión de proyectos, Análisis de datos")
+experiencia_input = st.text_area("Experiencias laborales (separadas por comas)",
+                                 placeholder="Ej: Gestión de proyectos, Análisis de datos")
 idioma_input = st.text_area(
-    "Idiomas requeridos (separados por comas)", placeholder="Ej: Ingles, Frances")
-
+    "Idiomas requeridos (separados por comas)", placeholder="Ej: Inglés, Francés")
 
 edad_input = st.slider("Edad deseada (referencia)", 18, 100, value=25)
 
@@ -50,8 +49,7 @@ if st.button("Guardar perfil"):
                  for a in (atributos_input or "").split(",") if a.strip()]
     experiencias = [x.strip()
                     for x in (experiencia_input or "").split(",") if x.strip()]
-    idiomas = [x.strip()
-               for x in (idioma_input or "").split(",") if x.strip()]
+    idiomas = [x.strip() for x in (idioma_input or "").split(",") if x.strip()]
     edad = int(edad_input)
 
     if not (puesto and educaciones and atributos and experiencias and idiomas):
@@ -74,7 +72,7 @@ if st.button("Guardar perfil"):
             st.error(err)
         else:
             st.success(f"Perfil guardado (id={perfil_id}).")
-            st.cache_data.clear()  # por si lo mostrás debajo
+            st.cache_data.clear()
             st.rerun()
 
 st.markdown("### Perfil activo/público actual")
@@ -99,10 +97,10 @@ else:
         st.write(f"- **Educación**: {_line(perfil.get('educacion', ''))}")
         st.write(f"- **Habilidades**: {_line(perfil.get('atributos', ''))}")
         st.write(f"- **Experiencias**: {_line(perfil.get('experiencia', ''))}")
-        st.write(f"- **Idiomas**: {_line(perfil.get('Idiomas', ''))}")
+        # <- corregido
+        st.write(f"- **Idiomas**: {_line(perfil.get('idiomas', ''))}")
         edad = perfil.get("edad")
         if isinstance(edad, int) and edad > 0:
             st.write(f"- **Edad objetivo**: {edad}")
         st.caption(
-            f"activo={perfil.get('activo')} • publicado={perfil.get('publicado')} • owner={perfil.get('owner')}"
-        )
+            f"activo={perfil.get('activo')} • publicado={perfil.get('publicado')} • owner={perfil.get('owner')}")
