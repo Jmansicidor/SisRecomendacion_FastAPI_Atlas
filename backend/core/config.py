@@ -38,8 +38,8 @@ class Settings(BaseSettings):
     # App
     DOMAIN: str = "localhost"
     ENVIRONMENT: Literal["local", "staging", "production"] = "local"
-    JWT_SECRET_KEY: str = "change-me"
-    JWT_ALGORITHM: str = "HS256"
+    JWT_SECRET_KEY: str
+    JWT_ALGORITHM: str
     JWT_ACCESS_EXPIRES_MIN: int = 30
     JWT_REFRESH_EXPIRES_DAYS: int = 7
 
@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     MONGO_HOSTS: Annotated[list[str] | str, BeforeValidator(
         parse_hosts)] = "mongo"  # default para Docker Compose
     MONGO_PORT: int | None = 27017                 # para +srv debe ser None
-    MONGO_DATABASE: str = "testuser"
+    MONGO_DATABASE: str
     MONGO_AUTH_SOURCE: str | None = None
     MONGO_PARAMS: dict[str, str] | str = Field(default_factory=dict)
 
@@ -130,4 +130,3 @@ W_EDU = float(os.getenv("RANK_W_EDU", "0.35"))
 W_IDI = float(os.getenv("RANK_W_IDI", "0"))
 # % de similitud para contar en jaccard
 THR_JACCARD = int(os.getenv("RANK_THR_JACCARD", "87"))
-# si no está en config, usamos 87 por defecto

@@ -151,6 +151,7 @@ exp_list = _as_list(analisis.get("experiencia_laboral"))
 hab_list = _as_list(analisis.get("habilidades_tecnicas"))
 idiomas = analisis.get("idiomas", "—")
 
+
 st.write(f"**Nombre:** {nombre}")
 st.write(f"**Email:** {user_email}")
 st.write(f"**Formación académica:** {formacion}")
@@ -160,7 +161,11 @@ for e in exp_list:
 st.write("**Habilidades técnicas:**")
 for h in hab_list:
     st.write(f"- {h}")
-st.write(f"**Idiomas:** {idiomas}")
+
+if idiomas:
+    st.write(f"**Idiomas:** {idiomas}")
+else:
+    st.write("**Idiomas:**Sin idiomas encontrados.")
 
 if fetch_err:
     st.error(f"No se pudo obtener tu CV: {fetch_err}")

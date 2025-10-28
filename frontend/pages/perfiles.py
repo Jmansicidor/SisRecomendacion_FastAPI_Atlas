@@ -16,7 +16,7 @@ navegacion_path()
 sidebar_user_box()
 
 st.title("Perfiles")
-st.write(me)
+
 
 st.subheader("Perfil buscado para la vacante")
 st.write("Ingresá múltiples valores separándolos con comas…")

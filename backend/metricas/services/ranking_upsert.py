@@ -33,7 +33,7 @@ async def upsert_ranking_for_active_profile(db, cv_id: str, cv_vector: list[floa
         projection={
             "nombre": 1, "apellido": 1, "email": 1, "cv_file_id": 1,
             "tokens_habilidades": 1, "tokens_experiencia": 1, "tokens_formacion": 1,
-            "tokens_idiomas": 1,   # 👈 si lo cargás desde cv_analisis_gpt
+            "tokens_idiomas": 1,   
         }
     )
     if not cv_doc:

@@ -106,8 +106,8 @@ SYSTEM_PROMPT = (
     '  "numero_de_telefono": "string",\n'
     '  "formacion_academica": ["string", "..."],\n'
     '  "experiencia_laboral": ["string", "..."],\n'
-    '  "habilidades_tecnicas": ["string", "..."]\n'
-    '  "idiomas": ["string", "..."]\n'
+    '  "habilidades_tecnicas": ["string", "..."],\n'
+    '  "idiomas": ["string", "..."]'
     '}\n'
     "No incluyas comentarios ni texto fuera del JSON. "
     "Si un campo no está, déjalo vacío o con []."
